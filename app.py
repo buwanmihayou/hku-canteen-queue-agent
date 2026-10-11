@@ -1,5 +1,6 @@
 import os
 import re
+import io
 from PIL import Image
 import streamlit as st
 
@@ -7,7 +8,9 @@ import streamlit as st
 # 页面基础配置
 # ==========================================
 st.set_page_config(
-    page_title="HKU Canteen Queue Assistant", page_icon="🍲", layout="centered"
+    page_title="HKU Canteen Queue Assistant",
+    page_icon="🍲",
+    layout="centered"
 )
 
 # 读取 Streamlit 云端 Secrets 中配置的 Gemini Key（若未配置则为 None）
@@ -39,7 +42,7 @@ CAMPUS_LOCATIONS = [
 def analyze_queue_image(image_file, use_offline_cache=False):
     """自适应视觉分析流程：
     1. 优先支持“离线测试缓存”演示；
-    2. 若配置了 GEMINI_API_KEY，自动压缩图片并调用最新 gemini-3.8-flash；
+    2. 若配置了 GEMINI_API_KEY，压缩图片转为字节流后调用 Gemini 3.8 Flash；
     3. 若在本地运行且未配置云端 Key，尝试连接本地 Ollama (LLaVA)；
     4. 均不可用时优雅降级并给出清晰指引。
     """
@@ -51,22 +54,35 @@ def analyze_queue_image(image_file, use_offline_cache=False):
     if GEMINI_KEY:
         try:
             from google import genai
+            from google.genai import types
 
             client = genai.Client(api_key=GEMINI_KEY)
 
-            # 打开图片并自动等比缩放，防止大图传输超时
-            image = Image.open(image_file)
-            if image.mode != "RGB":
-                image = image.convert("RGB")
-            image.thumbnail((1024, 1024), Image.Resampling.LANCZOS)
+            # 1. 压缩图片并转换为 JPEG 内存字节，杜绝大图传输超时与对象序列化挂起
+            img = Image.open(image_file)
+            if img.mode != "RGB":
+                img = img.convert("RGB")
+            img.thumbnail((800, 800), Image.Resampling.LANCZOS)
+
+            buffer = io.BytesIO()
+            img.save(buffer, format="JPEG", quality=80)
+            img_bytes = buffer.getvalue()
 
             prompt = (
-                "You are an assistant for estimating cafeteria queues. "
-                "Carefully count or estimate how many people are waiting in the queue in this picture. "
-                "Reply STRICTLY with the format: 'PEOPLE_COUNT: <integer>, DENSITY: <Low/Medium/High>'."
+                "You are an assistant estimating canteen queues. "
+                "Count or estimate how many people are in this image. "
+                "Reply strictly in this format: 'PEOPLE_COUNT: <integer>, DENSITY: <Low/Medium/High>'."
             )
+
+            # 2. 使用官方推荐的 types.Part.from_bytes 传递二进制数据
+            image_part = types.Part.from_bytes(
+                data=img_bytes,
+                mime_type="image/jpeg",
+            )
+
             response = client.models.generate_content(
-                model="gemini-3.8-flash", contents=[image, prompt]
+                model="gemini-3.8-flash",
+                contents=[prompt, image_part]
             )
             text = response.text
 
@@ -77,9 +93,7 @@ def analyze_queue_image(image_file, use_offline_cache=False):
                 digit_match = re.search(r"\d+", text)
                 count = int(digit_match.group()) if digit_match else 8
 
-            density = (
-                "High" if count > 15 else ("Medium" if count > 6 else "Low")
-            )
+            density = "High" if count > 15 else ("Medium" if count > 6 else "Low")
             return count, density, "Gemini 3.8 Flash (Cloud VLM)"
         except Exception as e:
             st.warning(f"云端 VLM 接口调用受阻，正在尝试本地/兜底策略: {e}")
@@ -212,5 +226,5 @@ with tab2:
                 )
 
             st.caption(
-                f"Calculation basis: {selected_canteen} avg wait {rate} min/person."
+                f"💡 计算依据：{selected_canteen} 平均每人点餐耗时约 {rate} 分钟。"
             )
