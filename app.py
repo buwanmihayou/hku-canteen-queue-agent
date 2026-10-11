@@ -39,7 +39,7 @@ CAMPUS_LOCATIONS = [
 def analyze_queue_image(image_file, use_offline_cache=False):
     """自适应视觉分析流程：
     1. 优先支持“离线测试缓存”演示；
-    2. 若配置了 GEMINI_API_KEY，自动走云端 Gemini 视觉模型（公网 Streamlit Cloud 可用）；
+    2. 若配置了 GEMINI_API_KEY，自动压缩图片并调用最新 gemini-3.8-flash；
     3. 若在本地运行且未配置云端 Key，尝试连接本地 Ollama (LLaVA)；
     4. 均不可用时优雅降级并给出清晰指引。
     """
@@ -53,7 +53,13 @@ def analyze_queue_image(image_file, use_offline_cache=False):
             from google import genai
 
             client = genai.Client(api_key=GEMINI_KEY)
+
+            # 打开图片并自动等比缩放，防止大图传输超时
             image = Image.open(image_file)
+            if image.mode != "RGB":
+                image = image.convert("RGB")
+            image.thumbnail((1024, 1024), Image.Resampling.LANCZOS)
+
             prompt = (
                 "You are an assistant for estimating cafeteria queues. "
                 "Carefully count or estimate how many people are waiting in the queue in this picture. "
@@ -74,7 +80,7 @@ def analyze_queue_image(image_file, use_offline_cache=False):
             density = (
                 "High" if count > 15 else ("Medium" if count > 6 else "Low")
             )
-            return count, density, "Gemini 2.5 Flash (Cloud VLM)"
+            return count, density, "Gemini 3.8 Flash (Cloud VLM)"
         except Exception as e:
             st.warning(f"云端 VLM 接口调用受阻，正在尝试本地/兜底策略: {e}")
 
@@ -129,10 +135,9 @@ with tab1:
 
     if st.button("计算最优避峰路线", type="primary"):
         st.markdown("### 推荐就餐方案：")
-        # 简单加权评分算法
         ranked = []
         for canteen, info in STALL_RATES.items():
-            base_wait = 8 * info["rate_min_per_person"]  # 默认基准平峰客流
+            base_wait = 8 * info["rate_min_per_person"]
             total_cost = (
                 (info["walk"] * 1.5 + base_wait)
                 if "赶时间" in urgency
@@ -208,4 +213,5 @@ with tab2:
 
             st.caption(
                 f"💡 **计算依据**：{selected_canteen} 平均每人点餐耗时约 {rate} 分钟。"
+            )rate} 分钟。"
             )
