@@ -213,5 +213,5 @@ with tab2:
 
             st.caption(
                 f"💡 **计算依据**：{selected_canteen} 平均每人点餐耗时约 {rate} 分钟。"
-            )rate} 分钟。"
+            {rate} 分钟。"
             )
