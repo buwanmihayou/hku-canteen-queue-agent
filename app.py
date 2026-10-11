@@ -60,7 +60,7 @@ def analyze_queue_image(image_file, use_offline_cache=False):
                 "Reply STRICTLY with the format: 'PEOPLE_COUNT: <integer>, DENSITY: <Low/Medium/High>'."
             )
             response = client.models.generate_content(
-                model="gemini-2.5-flash", contents=[image, prompt]
+                model="gemini-3.8-flash", contents=[image, prompt]
             )
             text = response.text
 
