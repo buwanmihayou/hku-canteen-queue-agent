@@ -1,6 +1,7 @@
 import os
 import re
 import io
+import time
 from PIL import Image
 import streamlit as st
 
@@ -40,9 +41,10 @@ CAMPUS_LOCATIONS = [
 # VLM 视觉分析函数 (云端 / 本地 / 离线三模自适应)
 # ==========================================
 def analyze_queue_image(image_file, use_offline_cache=False):
-    """自适应视觉分析流程：
+    """
+    自适应视觉分析流程：
     1. 优先支持“离线测试缓存”演示；
-    2. 若配置了 GEMINI_API_KEY，压缩图片转为字节流后调用 Gemini 3.8 Flash；
+    2. 若配置了 GEMINI_API_KEY，压缩图片转为字节流，并带自动重试机制调用 Gemini 3.8 Flash；
     3. 若在本地运行且未配置云端 Key，尝试连接本地 Ollama (LLaVA)；
     4. 均不可用时优雅降级并给出清晰指引。
     """
@@ -58,7 +60,7 @@ def analyze_queue_image(image_file, use_offline_cache=False):
 
             client = genai.Client(api_key=GEMINI_KEY)
 
-            # 1. 压缩图片并转换为 JPEG 内存字节，杜绝大图传输超时与对象序列化挂起
+            # 1. 压缩图片并转换为 JPEG 内存字节，杜绝大图传输超时
             img = Image.open(image_file)
             if img.mode != "RGB":
                 img = img.convert("RGB")
@@ -80,11 +82,24 @@ def analyze_queue_image(image_file, use_offline_cache=False):
                 mime_type="image/jpeg",
             )
 
-            response = client.models.generate_content(
-                model="gemini-3.8-flash",
-                contents=[prompt, image_part]
-            )
-            text = response.text
+            # 3. 应对 503 UNAVAILABLE 高峰拥堵的自动重试机制（最多重试 3 次）
+            response = None
+            max_retries = 3
+            for attempt in range(max_retries):
+                try:
+                    response = client.models.generate_content(
+                        model="gemini-3.8-flash",
+                        contents=[prompt, image_part]
+                    )
+                    break
+                except Exception as err:
+                    err_str = str(err)
+                    if ("503" in err_str or "UNAVAILABLE" in err_str or "high demand" in err_str) and attempt < max_retries - 1:
+                        time.sleep(2 * (attempt + 1))  # 分别等待 2s, 4s 后重试
+                        continue
+                    raise err
+
+            text = response.text if response else ""
 
             match = re.search(r"PEOPLE_COUNT:\s*(\d+)", text)
             if match:
