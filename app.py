@@ -5,18 +5,12 @@ import time
 from PIL import Image
 import streamlit as st
 
-# ==========================================
-# 页面基础配置
-# ==========================================
 st.set_page_config(
     page_title="HKU Canteen Queue Assistant",
     page_icon="🍲",
     layout="centered"
 )
 
-# ==========================================
-# 读取并净化 AILT9019 官方赞助的阿里云百炼配置
-# ==========================================
 raw_bailian_key = st.secrets.get("DASHSCOPE_API_KEY", os.getenv("DASHSCOPE_API_KEY", ""))
 BAILIAN_KEY = (
     str(raw_bailian_key)
@@ -41,9 +35,6 @@ BAILIAN_BASE_URL = (
     else "https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1"
 )
 
-# ==========================================
-# 港大食堂与路线数据知识库
-# ==========================================
 STALL_RATES = {
     "Alfafa Bistro (Chong Yuet Ming)": {"rate_min_per_person": 1.2, "walk": 3},
     "Maxim's Canteen (Main Campus)": {"rate_min_per_person": 0.6, "walk": 5},
@@ -61,11 +52,7 @@ CAMPUS_LOCATIONS = [
     "Knowles Building (纽鲁诗楼)",
 ]
 
-# ==========================================
-# 核心推理：阿里云百炼 (Qwen3.8-Flash) 调用
-# ==========================================
 def call_bailian_llm(prompt, max_tokens=150):
-    """通过 OpenAI 兼容协议请求 AILT9019 官方赞助的 Qwen3.8-Flash 模型"""
     if not BAILIAN_KEY:
         return None
 
@@ -76,25 +63,17 @@ def call_bailian_llm(prompt, max_tokens=150):
             base_url=BAILIAN_BASE_URL
         )
         response = client.chat.completions.create(
-            model="qwen3.8-flash",  # Ed 公告官方指定的轻量高效模型
+            model="qwen3.8-flash",
             messages=[{"role": "user", "content": prompt}],
             max_tokens=max_tokens,
             timeout=12
         )
         return response.choices[0].message.content
-    except Exception as e:
+    except Exception:
         return None
 
-# ==========================================
-# 视觉估算处理函数
-# ==========================================
+
 def analyze_queue_image(image_file, use_offline_cache=False):
-    """
-    排队估算处理逻辑：
-    1. 支持勾选离线测试集基准缓存；
-    2. 基于上传照片的像素结构与元数据，调用百炼 Qwen3.8-Flash 进行人流密度数学建模；
-    3. 保留安全兜底，完全不依赖任何外部第三方闭源模型。
-    """
     if use_offline_cache:
         return 16, "High", "AILT9019 课程基准测试缓存 (Benchmark Cache)"
 
@@ -105,7 +84,6 @@ def analyze_queue_image(image_file, use_offline_cache=False):
     except Exception:
         return 8, "Medium", "Rule-based Fallback"
 
-    # 构建结构化上下文 Prompt 交由百炼 Qwen3.8-Flash 推理
     prompt = (
         f"你是一名校园食堂人流分析助手。现有一张在港大食堂拍摄的现场排队照片，"
         f"图像分辨率规格为 {w}x{h}，画面画幅比为 {aspect_ratio}。"
@@ -127,21 +105,14 @@ def analyze_queue_image(image_file, use_offline_cache=False):
         density = "High" if count > 15 else ("Medium" if count > 6 else "Low")
         return count, density, "Alibaba Bailian (Qwen3.8-Flash)"
 
-    # 网络波动时的安全兜底
     return 8, "Medium", "AILT9019 Rule-based Fallback"
 
 
-# ==========================================
-# 页面 UI 布局
-# ==========================================
 st.title("🍲 HKU Canteen Queue Assistant")
 st.caption("AI-driven multi-modal dining assistant for HKU students | Course Project (AILT9019)")
 
 tab1, tab2 = st.tabs(["🚶‍♂️ 避峰推荐与路线规划", "📷 现场排队拍照估算"])
 
-# ------------------------------------------
-# Tab 1: 避峰推荐与路线规划
-# ------------------------------------------
 with tab1:
     st.subheader("1. 校园位置与出行规划")
     user_location = st.selectbox(
@@ -177,7 +148,6 @@ with tab1:
                 f"- 综合建议耗时：约 **{walk + wait:.1f}** 分钟"
             )
 
-        # 调用学校百炼专属模型生成路线建议
         with st.spinner("正在通过学校赞助的 Qwen3.8-Flash 生成贴心建议..."):
             advice_prompt = (
                 f"你是一名港大校园生活向导。学生现在在【{user_location}】，状态是【{urgency}】。"
@@ -188,9 +158,6 @@ with tab1:
             if ai_advice:
                 st.info(f"💡 **AI 专属向导建议 (Qwen3.8-Flash)**：\n\n{ai_advice}")
 
-# ------------------------------------------
-# Tab 2: 现场排队拍照估算
-# ------------------------------------------
 with tab2:
     st.subheader("2. 现场排队照片智能分析")
 
@@ -230,7 +197,6 @@ with tab2:
 
             st.success(f"✅ 估算完成！推理引擎：{source}")
 
-            # 结果可视化展示
             col1, col2 = st.columns(2)
             with col1:
                 st.metric("预估排队人数", f"约 {people_count} 人")
