@@ -14,17 +14,35 @@ st.set_page_config(
     layout="centered"
 )
 
-# 读取环境变量与 Streamlit Secrets 中的 API 配置
-# 优先读取 AILT9019 官方赞助的阿里云百炼配置
-BAILIAN_KEY = st.secrets.get("DASHSCOPE_API_KEY", os.getenv("DASHSCOPE_API_KEY", None))
-BAILIAN_BASE_URL = st.secrets.get(
+# ==========================================
+# 读取并净化 API 密钥 (自动清除复制带来的换行与空格)
+# ==========================================
+raw_bailian_key = st.secrets.get("DASHSCOPE_API_KEY", os.getenv("DASHSCOPE_API_KEY", ""))
+BAILIAN_KEY = (
+    str(raw_bailian_key)
+    .replace("\n", "")
+    .replace("\r", "")
+    .replace(" ", "")
+    .strip()
+    if raw_bailian_key
+    else None
+)
+
+raw_base_url = st.secrets.get(
     "DASHSCOPE_BASE_URL",
     os.getenv(
         "DASHSCOPE_BASE_URL",
         "https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1"
     )
 )
-GEMINI_KEY = st.secrets.get("GEMINI_API_KEY", os.getenv("GEMINI_API_KEY", None))
+BAILIAN_BASE_URL = (
+    str(raw_base_url).strip().rstrip("/")
+    if raw_base_url
+    else "https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1"
+)
+
+raw_gemini_key = st.secrets.get("GEMINI_API_KEY", os.getenv("GEMINI_API_KEY", ""))
+GEMINI_KEY = str(raw_gemini_key).strip() if raw_gemini_key else None
 
 # ==========================================
 # 港大食堂与步行路线知识库 (规则引擎数据)
@@ -52,23 +70,23 @@ CAMPUS_LOCATIONS = [
 def analyze_queue_image(image_file, use_offline_cache=False):
     """
     自适应视觉推理架构：
-    1. 优先支持“离线测试缓存”；
-    2. 第一梯队：AILT9019 官方赞助阿里云百炼 Qwen-VL (兼容 OpenAI SDK)；
-    3. 第二梯队：Gemini 3.8 Flash；
-    4. 第三梯队：本地 Ollama (LLaVA)；
-    5. 第四梯队：离线基准兜底。
+    1. 离线测试缓存
+    2. 第一梯队：AILT9019 官方赞助阿里云百炼 Qwen-VL Plus
+    3. 第二梯队：Gemini 3.8 Flash
+    4. 第三梯队：本地 Ollama (LLaVA)
+    5. 第四梯队：规则基准兜底
     """
     # 模式 1：离线测试缓存
     if use_offline_cache:
         return 16, "High", "离线缓存模拟数据 (Fallback Cache)"
 
-    # 预处理：压缩并转为标准图片内存流
+    # 预处理：压缩并转为 base64 和二进制流
     try:
         img = Image.open(image_file)
         if img.mode != "RGB":
             img = img.convert("RGB")
         img.thumbnail((800, 800), Image.Resampling.LANCZOS)
-        
+
         buffer = io.BytesIO()
         img.save(buffer, format="JPEG", quality=80)
         img_bytes = buffer.getvalue()
@@ -127,7 +145,7 @@ def analyze_queue_image(image_file, use_offline_cache=False):
             density = "High" if count > 15 else ("Medium" if count > 6 else "Low")
             return count, density, "Qwen-VL Plus (AILT9019 Bailian Cloud)"
         except Exception as e:
-            st.warning(f"阿里云百炼接口调用受阻，尝试下一级通道: {e}")
+            st.warning(f"阿里云百炼接口调用受阻，尝试备用通道: {e}")
 
     # 模式 3：Gemini 3.8 Flash (备选云端通道)
     if GEMINI_KEY:
@@ -165,7 +183,7 @@ def analyze_queue_image(image_file, use_offline_cache=False):
     except Exception:
         pass
 
-    # 模式 5：规则引擎兜底
+    # 模式 5：规则基准兜底
     st.info("💡 提示：当前未连通在线或本地模型，已启用离线基准估算值。")
     return 10, "Medium", "Rule-based Fallback"
 
@@ -260,7 +278,7 @@ with tab2:
             else:
                 st.success(f"✅ 估算完成！推理引擎：{source}")
 
-            # 结果指标渲染
+            # 结果可视化展示
             col1, col2 = st.columns(2)
             with col1:
                 st.metric("预估排队人数", f"约 {people_count} 人")
