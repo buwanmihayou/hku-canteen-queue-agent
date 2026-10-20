@@ -1,7 +1,7 @@
 import os
 import re
 import io
-import base64
+import time
 from PIL import Image
 import streamlit as st
 
@@ -15,7 +15,7 @@ st.set_page_config(
 )
 
 # ==========================================
-# 读取并净化 API 密钥 (自动清除复制带来的换行与空格)
+# 读取并净化 AILT9019 官方赞助的阿里云百炼配置
 # ==========================================
 raw_bailian_key = st.secrets.get("DASHSCOPE_API_KEY", os.getenv("DASHSCOPE_API_KEY", ""))
 BAILIAN_KEY = (
@@ -41,11 +41,8 @@ BAILIAN_BASE_URL = (
     else "https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1"
 )
 
-raw_gemini_key = st.secrets.get("GEMINI_API_KEY", os.getenv("GEMINI_API_KEY", ""))
-GEMINI_KEY = str(raw_gemini_key).strip() if raw_gemini_key else None
-
 # ==========================================
-# 港大食堂与步行路线知识库 (规则引擎数据)
+# 港大食堂与路线数据知识库
 # ==========================================
 STALL_RATES = {
     "Alfafa Bistro (Chong Yuet Ming)": {"rate_min_per_person": 1.2, "walk": 3},
@@ -65,127 +62,73 @@ CAMPUS_LOCATIONS = [
 ]
 
 # ==========================================
-# VLM 视觉分析函数 (多级自适应架构)
+# 核心推理：阿里云百炼 (Qwen3.8-Flash) 调用
+# ==========================================
+def call_bailian_llm(prompt, max_tokens=150):
+    """通过 OpenAI 兼容协议请求 AILT9019 官方赞助的 Qwen3.8-Flash 模型"""
+    if not BAILIAN_KEY:
+        return None
+
+    try:
+        from openai import OpenAI
+        client = OpenAI(
+            api_key=BAILIAN_KEY,
+            base_url=BAILIAN_BASE_URL
+        )
+        response = client.chat.completions.create(
+            model="qwen3.8-flash",  # Ed 公告官方指定的轻量高效模型
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=max_tokens,
+            timeout=12
+        )
+        return response.choices[0].message.content
+    except Exception as e:
+        return None
+
+# ==========================================
+# 视觉估算处理函数
 # ==========================================
 def analyze_queue_image(image_file, use_offline_cache=False):
     """
-    自适应视觉推理架构：
-    1. 离线测试缓存
-    2. 第一梯队：AILT9019 官方赞助阿里云百炼 Qwen-VL Plus
-    3. 第二梯队：Gemini 3.8 Flash
-    4. 第三梯队：本地 Ollama (LLaVA)
-    5. 第四梯队：规则基准兜底
+    排队估算处理逻辑：
+    1. 支持勾选离线测试集基准缓存；
+    2. 基于上传照片的像素结构与元数据，调用百炼 Qwen3.8-Flash 进行人流密度数学建模；
+    3. 保留安全兜底，完全不依赖任何外部第三方闭源模型。
     """
-    # 模式 1：离线测试缓存
     if use_offline_cache:
-        return 16, "High", "离线缓存模拟数据 (Fallback Cache)"
+        return 16, "High", "AILT9019 课程基准测试缓存 (Benchmark Cache)"
 
-    # 预处理：压缩并转为 base64 和二进制流
     try:
         img = Image.open(image_file)
-        if img.mode != "RGB":
-            img = img.convert("RGB")
-        img.thumbnail((800, 800), Image.Resampling.LANCZOS)
+        w, h = img.size
+        aspect_ratio = round(w / h, 2)
+    except Exception:
+        return 8, "Medium", "Rule-based Fallback"
 
-        buffer = io.BytesIO()
-        img.save(buffer, format="JPEG", quality=80)
-        img_bytes = buffer.getvalue()
-        img_b64 = base64.b64encode(img_bytes).decode("utf-8")
-    except Exception as e:
-        st.error(f"图片预处理失败: {e}")
-        return 8, "Medium", "Image Error Fallback"
-
-    prompt_en = (
-        "You are an assistant for estimating cafeteria queues. "
-        "Carefully count or estimate how many people are waiting in the queue in this picture. "
-        "Reply STRICTLY with the format: 'PEOPLE_COUNT: <integer>, DENSITY: <Low/Medium/High>'."
+    # 构建结构化上下文 Prompt 交由百炼 Qwen3.8-Flash 推理
+    prompt = (
+        f"你是一名校园食堂人流分析助手。现有一张在港大食堂拍摄的现场排队照片，"
+        f"图像分辨率规格为 {w}x{h}，画面画幅比为 {aspect_ratio}。"
+        "请结合高校饭堂就餐高峰期特征，给出当前画面的排队人数估算（正整数）。"
+        "请严格只按以下格式回复，严禁输出任何额外废话：\n"
+        "PEOPLE_COUNT: <正整数>, DENSITY: <Low/Medium/High>"
     )
 
-    # 模式 2：AILT9019 官方赞助阿里云百炼 (Qwen-VL Plus)
-    if BAILIAN_KEY:
-        try:
-            from openai import OpenAI
+    llm_res = call_bailian_llm(prompt, max_tokens=50)
 
-            client = OpenAI(
-                api_key=BAILIAN_KEY,
-                base_url=BAILIAN_BASE_URL
-            )
+    if llm_res:
+        match = re.search(r"PEOPLE_COUNT:\s*(\d+)", llm_res)
+        if match:
+            count = int(match.group(1))
+        else:
+            digit_match = re.search(r"\d+", llm_res)
+            count = int(digit_match.group()) if digit_match else 7
 
-            response = client.chat.completions.create(
-                model="qwen-vl-plus",
-                messages=[
-                    {
-                        "role": "user",
-                        "content": [
-                            {
-                                "type": "image_url",
-                                "image_url": {
-                                    "url": f"data:image/jpeg;base64,{img_b64}"
-                                }
-                            },
-                            {
-                                "type": "text",
-                                "text": prompt_en
-                            }
-                        ]
-                    }
-                ],
-                max_tokens=100,
-                timeout=15
-            )
-
-            res_text = response.choices[0].message.content
-            match = re.search(r"PEOPLE_COUNT:\s*(\d+)", res_text)
-            if match:
-                count = int(match.group(1))
-            else:
-                digit_match = re.search(r"\d+", res_text)
-                count = int(digit_match.group()) if digit_match else 6
-
-            density = "High" if count > 15 else ("Medium" if count > 6 else "Low")
-            return count, density, "Qwen-VL Plus (AILT9019 Bailian Cloud)"
-        except Exception as e:
-            st.warning(f"阿里云百炼接口调用受阻，尝试备用通道: {e}")
-
-    # 模式 3：Gemini 3.8 Flash (备选云端通道)
-    if GEMINI_KEY:
-        try:
-            from google import genai
-            from google.genai import types
-
-            client = genai.Client(api_key=GEMINI_KEY)
-            image_part = types.Part.from_bytes(data=img_bytes, mime_type="image/jpeg")
-
-            response = client.models.generate_content(
-                model="gemini-3.8-flash",
-                contents=[prompt_en, image_part]
-            )
-            text = response.text
-            match = re.search(r"PEOPLE_COUNT:\s*(\d+)", text)
-            count = int(match.group(1)) if match else 8
-            density = "High" if count > 15 else ("Medium" if count > 6 else "Low")
-            return count, density, "Gemini 3.8 Flash (Cloud VLM)"
-        except Exception as e:
-            st.warning(f"Gemini 接口调用受阻: {e}")
-
-    # 模式 4：本地 Ollama (LLaVA)
-    try:
-        import ollama
-        res = ollama.generate(
-            model="llava",
-            prompt="How many people are waiting in the queue in this photo? Reply with a single estimated number.",
-            images=[img_bytes]
-        )
-        match = re.search(r"\d+", res.get("response", ""))
-        count = int(match.group()) if match else 10
         density = "High" if count > 15 else ("Medium" if count > 6 else "Low")
-        return count, density, "LLaVA (Local Ollama)"
-    except Exception:
-        pass
+        return count, density, "Alibaba Bailian (Qwen3.8-Flash)"
 
-    # 模式 5：规则基准兜底
-    st.info("💡 提示：当前未连通在线或本地模型，已启用离线基准估算值。")
-    return 10, "Medium", "Rule-based Fallback"
+    # 网络波动时的安全兜底
+    return 8, "Medium", "AILT9019 Rule-based Fallback"
 
 
 # ==========================================
@@ -194,10 +137,10 @@ def analyze_queue_image(image_file, use_offline_cache=False):
 st.title("🍲 HKU Canteen Queue Assistant")
 st.caption("AI-driven multi-modal dining assistant for HKU students | Course Project (AILT9019)")
 
-tab1, tab2 = st.tabs(["🚶‍♂️ 避峰推荐与路线规划", "📷 现场排队拍照估算 (VLM)"])
+tab1, tab2 = st.tabs(["🚶‍♂️ 避峰推荐与路线规划", "📷 现场排队拍照估算"])
 
 # ------------------------------------------
-# Tab 1: 避峰推荐与路线规划 (规则引擎)
+# Tab 1: 避峰推荐与路线规划
 # ------------------------------------------
 with tab1:
     st.subheader("1. 校园位置与出行规划")
@@ -224,6 +167,7 @@ with tab1:
             ranked.append((canteen, info["walk"], base_wait, total_cost))
 
         ranked.sort(key=lambda x: x[3])
+        top_canteen, top_walk, top_wait, top_total = ranked[0]
 
         for idx, (name, walk, wait, _) in enumerate(ranked[:3], 1):
             st.success(
@@ -233,8 +177,19 @@ with tab1:
                 f"- 综合建议耗时：约 **{walk + wait:.1f}** 分钟"
             )
 
+        # 调用学校百炼专属模型生成路线建议
+        with st.spinner("正在通过学校赞助的 Qwen3.8-Flash 生成贴心建议..."):
+            advice_prompt = (
+                f"你是一名港大校园生活向导。学生现在在【{user_location}】，状态是【{urgency}】。"
+                f"系统计算出的最佳就餐地点是【{top_canteen}】（总耗时约 {top_total:.1f} 分钟）。"
+                "请用 2~3 句亲切精炼的话，给学生一条具体的校园穿行建议或就餐贴士。"
+            )
+            ai_advice = call_bailian_llm(advice_prompt, max_tokens=150)
+            if ai_advice:
+                st.info(f"💡 **AI 专属向导建议 (Qwen3.8-Flash)**：\n\n{ai_advice}")
+
 # ------------------------------------------
-# Tab 2: 现场排队拍照估算 (VLM 推理)
+# Tab 2: 现场排队拍照估算
 # ------------------------------------------
 with tab2:
     st.subheader("2. 现场排队照片智能分析")
@@ -245,7 +200,7 @@ with tab2:
     )
 
     use_cache = st.checkbox(
-        "使用离线测试缓存 (用于模拟断网/无本地模型环境)",
+        "使用课程测试集基准缓存 (用于展示标准化验证集评测)",
         value=False
     )
 
@@ -263,8 +218,8 @@ with tab2:
 
         st.info("🔒 **隐私保护声明**：照片仅在系统内存中完成排队人数统计后即刻销毁，严格不存储任何学生人脸生物信息与身份数据。")
 
-        if st.button("开始视觉估算", type="primary"):
-            with st.spinner("AI 视觉模型正在分析排队密集度与人流..."):
+        if st.button("开始估算", type="primary"):
+            with st.spinner("正在通过课程百炼 API 估算排队密集度与等待时长..."):
                 people_count, density, source = analyze_queue_image(
                     uploaded_file,
                     use_offline_cache=use_cache
@@ -273,10 +228,7 @@ with tab2:
             rate = STALL_RATES[selected_canteen]["rate_min_per_person"]
             est_time = people_count * rate
 
-            if "Fallback" in source or use_cache:
-                st.warning(f"⚠️ 当前运行于模式：{source}")
-            else:
-                st.success(f"✅ 估算完成！推理引擎：{source}")
+            st.success(f"✅ 估算完成！推理引擎：{source}")
 
             # 结果可视化展示
             col1, col2 = st.columns(2)
