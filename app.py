@@ -1,7 +1,7 @@
 import os
 import re
 import io
-import time
+import base64
 from PIL import Image
 import streamlit as st
 
@@ -14,7 +14,16 @@ st.set_page_config(
     layout="centered"
 )
 
-# 读取 Streamlit 云端 Secrets 中配置的 Gemini Key（若未配置则为 None）
+# 读取环境变量与 Streamlit Secrets 中的 API 配置
+# 优先读取 AILT9019 官方赞助的阿里云百炼配置
+BAILIAN_KEY = st.secrets.get("DASHSCOPE_API_KEY", os.getenv("DASHSCOPE_API_KEY", None))
+BAILIAN_BASE_URL = st.secrets.get(
+    "DASHSCOPE_BASE_URL",
+    os.getenv(
+        "DASHSCOPE_BASE_URL",
+        "https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1"
+    )
+)
 GEMINI_KEY = st.secrets.get("GEMINI_API_KEY", os.getenv("GEMINI_API_KEY", None))
 
 # ==========================================
@@ -38,101 +47,126 @@ CAMPUS_LOCATIONS = [
 ]
 
 # ==========================================
-# VLM 视觉分析函数 (云端 / 本地 / 离线三模自适应)
+# VLM 视觉分析函数 (多级自适应架构)
 # ==========================================
 def analyze_queue_image(image_file, use_offline_cache=False):
     """
-    自适应视觉分析流程：
-    1. 优先支持“离线测试缓存”演示；
-    2. 若配置了 GEMINI_API_KEY，压缩图片转为字节流，并带自动重试机制调用 Gemini 3.8 Flash；
-    3. 若在本地运行且未配置云端 Key，尝试连接本地 Ollama (LLaVA)；
-    4. 均不可用时优雅降级并给出清晰指引。
+    自适应视觉推理架构：
+    1. 优先支持“离线测试缓存”；
+    2. 第一梯队：AILT9019 官方赞助阿里云百炼 Qwen-VL (兼容 OpenAI SDK)；
+    3. 第二梯队：Gemini 3.8 Flash；
+    4. 第三梯队：本地 Ollama (LLaVA)；
+    5. 第四梯队：离线基准兜底。
     """
-    # 模式 1：离线测试缓存（应对断网/评审免配置环境）
+    # 模式 1：离线测试缓存
     if use_offline_cache:
         return 16, "High", "离线缓存模拟数据 (Fallback Cache)"
 
-    # 模式 2：云端 Gemini VLM（适合 Streamlit 公网部署）
+    # 预处理：压缩并转为标准图片内存流
+    try:
+        img = Image.open(image_file)
+        if img.mode != "RGB":
+            img = img.convert("RGB")
+        img.thumbnail((800, 800), Image.Resampling.LANCZOS)
+        
+        buffer = io.BytesIO()
+        img.save(buffer, format="JPEG", quality=80)
+        img_bytes = buffer.getvalue()
+        img_b64 = base64.b64encode(img_bytes).decode("utf-8")
+    except Exception as e:
+        st.error(f"图片预处理失败: {e}")
+        return 8, "Medium", "Image Error Fallback"
+
+    prompt_en = (
+        "You are an assistant for estimating cafeteria queues. "
+        "Carefully count or estimate how many people are waiting in the queue in this picture. "
+        "Reply STRICTLY with the format: 'PEOPLE_COUNT: <integer>, DENSITY: <Low/Medium/High>'."
+    )
+
+    # 模式 2：AILT9019 官方赞助阿里云百炼 (Qwen-VL Plus)
+    if BAILIAN_KEY:
+        try:
+            from openai import OpenAI
+
+            client = OpenAI(
+                api_key=BAILIAN_KEY,
+                base_url=BAILIAN_BASE_URL
+            )
+
+            response = client.chat.completions.create(
+                model="qwen-vl-plus",
+                messages=[
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "image_url",
+                                "image_url": {
+                                    "url": f"data:image/jpeg;base64,{img_b64}"
+                                }
+                            },
+                            {
+                                "type": "text",
+                                "text": prompt_en
+                            }
+                        ]
+                    }
+                ],
+                max_tokens=100,
+                timeout=15
+            )
+
+            res_text = response.choices[0].message.content
+            match = re.search(r"PEOPLE_COUNT:\s*(\d+)", res_text)
+            if match:
+                count = int(match.group(1))
+            else:
+                digit_match = re.search(r"\d+", res_text)
+                count = int(digit_match.group()) if digit_match else 6
+
+            density = "High" if count > 15 else ("Medium" if count > 6 else "Low")
+            return count, density, "Qwen-VL Plus (AILT9019 Bailian Cloud)"
+        except Exception as e:
+            st.warning(f"阿里云百炼接口调用受阻，尝试下一级通道: {e}")
+
+    # 模式 3：Gemini 3.8 Flash (备选云端通道)
     if GEMINI_KEY:
         try:
             from google import genai
             from google.genai import types
 
             client = genai.Client(api_key=GEMINI_KEY)
+            image_part = types.Part.from_bytes(data=img_bytes, mime_type="image/jpeg")
 
-            # 1. 压缩图片并转换为 JPEG 内存字节，杜绝大图传输超时
-            img = Image.open(image_file)
-            if img.mode != "RGB":
-                img = img.convert("RGB")
-            img.thumbnail((800, 800), Image.Resampling.LANCZOS)
-
-            buffer = io.BytesIO()
-            img.save(buffer, format="JPEG", quality=80)
-            img_bytes = buffer.getvalue()
-
-            prompt = (
-                "You are an assistant estimating canteen queues. "
-                "Count or estimate how many people are in this image. "
-                "Reply strictly in this format: 'PEOPLE_COUNT: <integer>, DENSITY: <Low/Medium/High>'."
+            response = client.models.generate_content(
+                model="gemini-3.8-flash",
+                contents=[prompt_en, image_part]
             )
-
-            # 2. 使用官方推荐的 types.Part.from_bytes 传递二进制数据
-            image_part = types.Part.from_bytes(
-                data=img_bytes,
-                mime_type="image/jpeg",
-            )
-
-            # 3. 应对 503 UNAVAILABLE 高峰拥堵的自动重试机制（最多重试 3 次）
-            response = None
-            max_retries = 3
-            for attempt in range(max_retries):
-                try:
-                    response = client.models.generate_content(
-                        model="gemini-3.8-flash",
-                        contents=[prompt, image_part]
-                    )
-                    break
-                except Exception as err:
-                    err_str = str(err)
-                    if ("503" in err_str or "UNAVAILABLE" in err_str or "high demand" in err_str) and attempt < max_retries - 1:
-                        time.sleep(2 * (attempt + 1))  # 分别等待 2s, 4s 后重试
-                        continue
-                    raise err
-
-            text = response.text if response else ""
-
+            text = response.text
             match = re.search(r"PEOPLE_COUNT:\s*(\d+)", text)
-            if match:
-                count = int(match.group(1))
-            else:
-                digit_match = re.search(r"\d+", text)
-                count = int(digit_match.group()) if digit_match else 8
-
+            count = int(match.group(1)) if match else 8
             density = "High" if count > 15 else ("Medium" if count > 6 else "Low")
             return count, density, "Gemini 3.8 Flash (Cloud VLM)"
         except Exception as e:
-            st.warning(f"云端 VLM 接口调用受阻，正在尝试本地/兜底策略: {e}")
+            st.warning(f"Gemini 接口调用受阻: {e}")
 
-    # 模式 3：本地 Ollama (LLaVA) 推理
+    # 模式 4：本地 Ollama (LLaVA)
     try:
         import ollama
-
-        image_bytes = image_file.getvalue()
-        prompt = "How many people are waiting in the queue in this photo? Reply with a single estimated number."
         res = ollama.generate(
-            model="llava", prompt=prompt, images=[image_bytes]
+            model="llava",
+            prompt="How many people are waiting in the queue in this photo? Reply with a single estimated number.",
+            images=[img_bytes]
         )
-        match = re.search(r"\d+", res["response"])
+        match = re.search(r"\d+", res.get("response", ""))
         count = int(match.group()) if match else 10
         density = "High" if count > 15 else ("Medium" if count > 6 else "Low")
         return count, density, "LLaVA (Local Ollama)"
     except Exception:
         pass
 
-    # 模式 4：无可用模型时的安全兜底
-    st.info(
-        "💡 提示：当前环境未连接本地 Ollama，亦未配置云端 API Key。已启用离线基准估算值（可勾选上方“离线测试缓存”获取标准测试集结果）。"
-    )
+    # 模式 5：规则引擎兜底
+    st.info("💡 提示：当前未连通在线或本地模型，已启用离线基准估算值。")
     return 10, "Medium", "Rule-based Fallback"
 
 
@@ -140,13 +174,9 @@ def analyze_queue_image(image_file, use_offline_cache=False):
 # 页面 UI 布局
 # ==========================================
 st.title("🍲 HKU Canteen Queue Assistant")
-st.caption(
-    "AI-driven multi-modal dining assistant for HKU students | Course Project (AILT9019)"
-)
+st.caption("AI-driven multi-modal dining assistant for HKU students | Course Project (AILT9019)")
 
-tab1, tab2 = st.tabs(
-    ["🚶‍♂️ 避峰推荐与路线规划", "📷 现场排队拍照估算 (VLM)"]
-)
+tab1, tab2 = st.tabs(["🚶‍♂️ 避峰推荐与路线规划", "📷 现场排队拍照估算 (VLM)"])
 
 # ------------------------------------------
 # Tab 1: 避峰推荐与路线规划 (规则引擎)
@@ -154,12 +184,13 @@ tab1, tab2 = st.tabs(
 with tab1:
     st.subheader("1. 校园位置与出行规划")
     user_location = st.selectbox(
-        "请选择你当前所在的校园建筑：", CAMPUS_LOCATIONS
+        "请选择你当前所在的校园建筑：",
+        CAMPUS_LOCATIONS
     )
     urgency = st.radio(
         "时间充裕程度：",
         ["赶时间 (优先步行时间短)", "正常就餐 (综合等待时间与距离)"],
-        horizontal=True,
+        horizontal=True
     )
 
     if st.button("计算最优避峰路线", type="primary"):
@@ -191,33 +222,34 @@ with tab2:
     st.subheader("2. 现场排队照片智能分析")
 
     selected_canteen = st.selectbox(
-        "选择当前就餐食堂/档口：", list(STALL_RATES.keys())
+        "选择当前就餐食堂/档口：",
+        list(STALL_RATES.keys())
     )
 
     use_cache = st.checkbox(
         "使用离线测试缓存 (用于模拟断网/无本地模型环境)",
-        value=False,
+        value=False
     )
 
     uploaded_file = st.file_uploader(
-        "上传排队现场照片 (JPEG/PNG)", type=["jpg", "jpeg", "png"]
+        "上传排队现场照片 (JPEG/PNG)",
+        type=["jpg", "jpeg", "png"]
     )
 
     if uploaded_file is not None:
         st.image(
             uploaded_file,
             caption="已上传照片 (本地即时脱敏处理)",
-            use_container_width=True,
+            use_container_width=True
         )
 
-        st.info(
-            "🔒 **隐私保护声明**：照片仅在系统内存中完成排队人数统计后即刻销毁，严格不存储任何学生人脸生物信息与身份数据。"
-        )
+        st.info("🔒 **隐私保护声明**：照片仅在系统内存中完成排队人数统计后即刻销毁，严格不存储任何学生人脸生物信息与身份数据。")
 
         if st.button("开始视觉估算", type="primary"):
             with st.spinner("AI 视觉模型正在分析排队密集度与人流..."):
                 people_count, density, source = analyze_queue_image(
-                    uploaded_file, use_offline_cache=use_cache
+                    uploaded_file,
+                    use_offline_cache=use_cache
                 )
 
             rate = STALL_RATES[selected_canteen]["rate_min_per_person"]
@@ -228,7 +260,7 @@ with tab2:
             else:
                 st.success(f"✅ 估算完成！推理引擎：{source}")
 
-            # 结果可视化展示
+            # 结果指标渲染
             col1, col2 = st.columns(2)
             with col1:
                 st.metric("预估排队人数", f"约 {people_count} 人")
@@ -237,9 +269,7 @@ with tab2:
                     "预计等待时长",
                     f"{est_time:.1f} 分钟",
                     delta=f"密集度: {density}",
-                    delta_color="normal",
+                    delta_color="normal"
                 )
 
-            st.caption(
-                f"💡 计算依据：{selected_canteen} 平均每人点餐耗时约 {rate} 分钟。"
-            )
+            st.caption(f"💡 计算依据：{selected_canteen} 平均每人点餐耗时约 {rate} 分钟。")
