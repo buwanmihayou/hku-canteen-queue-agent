@@ -258,7 +258,7 @@ with tab2:
         st.image(
             uploaded_file,
             caption="已上传照片 (本地即时脱敏处理)",
-            use_container_width=True
+            width="stretch"
         )
 
         st.info("🔒 **隐私保护声明**：照片仅在系统内存中完成排队人数统计后即刻销毁，严格不存储任何学生人脸生物信息与身份数据。")
