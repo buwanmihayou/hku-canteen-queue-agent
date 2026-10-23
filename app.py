@@ -45,11 +45,11 @@ BAILIAN_BASE_URL = (
 # HKU Dining & Transit Knowledge Base
 # ==========================================
 STALL_RATES = {
-    "Alfafa Bistro (Chong Yuet Ming)": {"rate_min_per_person": 1.2, "walk": 3},
-    "Maxim's Canteen (Main Campus)": {"rate_min_per_person": 0.6, "walk": 5},
-    "Swire Canteen (Swire Building)": {"rate_min_per_person": 0.8, "walk": 4},
-    "Fong Shu Chuen Canteen": {"rate_min_per_person": 1.0, "walk": 6},
-    "Centennial Campus Food Court": {"rate_min_per_person": 0.7, "walk": 8},
+    "CYM Canteen (Chong Yuet Ming Cultural Centre)": {"rate_min_per_person": 1.2, "walk": 3},
+    "JuYing Tai (Fong Shu Chuen Amenities Centre, Swire Building)": {"rate_min_per_person": 0.6, "walk": 5},
+    "Union Restaurant (Haking Wong Building)": {"rate_min_per_person": 0.8, "walk": 4},
+    "alfafa bistro (Jockey Club Tower, Centennial Campus)": {"rate_min_per_person": 1.0, "walk": 6},
+    "TAI TAI FOODTOPIA (Composite Building)": {"rate_min_per_person": 0.7, "walk": 8},
 }
 
 CAMPUS_LOCATIONS = [
