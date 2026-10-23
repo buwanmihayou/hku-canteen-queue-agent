@@ -5,6 +5,8 @@ import time
 from PIL import Image
 import streamlit as st
 
+from routing import rank_canteens
+
 # ==========================================
 # Page Configuration
 # ==========================================
@@ -45,11 +47,11 @@ BAILIAN_BASE_URL = (
 # HKU Dining & Transit Knowledge Base
 # ==========================================
 STALL_RATES = {
-    "CYM Canteen (Chong Yuet Ming Cultural Centre)": {"rate_min_per_person": 1.2, "walk": 3},
-    "JuYing Tai (Fong Shu Chuen Amenities Centre, Swire Building)": {"rate_min_per_person": 0.6, "walk": 5},
-    "Union Restaurant (Haking Wong Building)": {"rate_min_per_person": 0.8, "walk": 4},
-    "alfafa bistro (Jockey Club Tower, Centennial Campus)": {"rate_min_per_person": 1.0, "walk": 6},
-    "TAI TAI FOODTOPIA (Composite Building)": {"rate_min_per_person": 0.7, "walk": 8},
+    "CYM Canteen (Chong Yuet Ming Cultural Centre)": {"rate_min_per_person": 1.2},
+    "JuYing Tai (Fong Shu Chuen Amenities Centre, Swire Building)": {"rate_min_per_person": 0.6},
+    "Union Restaurant (Haking Wong Building)": {"rate_min_per_person": 0.8},
+    "alfafa bistro (Jockey Club Tower, Centennial Campus)": {"rate_min_per_person": 1.0},
+    "TAI TAI FOODTOPIA (Composite Building)": {"rate_min_per_person": 0.7},
 }
 
 CAMPUS_LOCATIONS = [
@@ -154,26 +156,25 @@ with tab1:
 
     if st.button("Find Optimal Dining Route", type="primary"):
         st.markdown("### Recommended Dining Plans:")
-        ranked = []
-        for canteen, info in STALL_RATES.items():
-            base_wait = 8 * info["rate_min_per_person"]
-            total_cost = (
-                (info["walk"] * 1.5 + base_wait)
-                if "Rush" in urgency
-                else (info["walk"] + base_wait)
-            )
-            ranked.append((canteen, info["walk"], base_wait, total_cost))
+        ranked = rank_canteens(
+            STALL_RATES,
+            user_location,
+            prioritize_short_walk="Rush" in urgency,
+        )
+        top_canteen, top_walk, top_wait, top_total, _ = ranked[0]
 
-        ranked.sort(key=lambda x: x[3])
-        top_canteen, top_walk, top_wait, top_total = ranked[0]
-
-        for idx, (name, walk, wait, _) in enumerate(ranked[:3], 1):
+        for idx, (name, walk, wait, total, _) in enumerate(ranked[:3], 1):
             st.success(
                 f"**Top {idx} Option: {name}**\n\n"
                 f"- Estimated transit walk: ~**{walk}** mins\n"
                 f"- Anticipated queue wait: ~**{wait:.1f}** mins\n"
-                f"- Total door-to-meal time: ~**{walk + wait:.1f}** mins"
+                f"- Total door-to-meal time: ~**{total:.1f}** mins"
             )
+
+        st.caption(
+            "Walking times are estimates and may vary due to lifts, stairs, slopes, "
+            "entrances, congestion, and walking pace."
+        )
 
         with st.spinner("Generating personalized AI transit advice..."):
             advice_prompt = (
