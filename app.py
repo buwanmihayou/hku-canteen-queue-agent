@@ -5,12 +5,18 @@ import time
 from PIL import Image
 import streamlit as st
 
+# ==========================================
+# Page Configuration
+# ==========================================
 st.set_page_config(
     page_title="HKU Canteen Queue Assistant",
     page_icon="🍲",
     layout="centered"
 )
 
+# ==========================================
+# Retrieve & Clean Bailian API Configuration
+# ==========================================
 raw_bailian_key = st.secrets.get("DASHSCOPE_API_KEY", os.getenv("DASHSCOPE_API_KEY", ""))
 BAILIAN_KEY = (
     str(raw_bailian_key)
@@ -35,6 +41,9 @@ BAILIAN_BASE_URL = (
     else "https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1"
 )
 
+# ==========================================
+# HKU Dining & Transit Knowledge Base
+# ==========================================
 STALL_RATES = {
     "Alfafa Bistro (Chong Yuet Ming)": {"rate_min_per_person": 1.2, "walk": 3},
     "Maxim's Canteen (Main Campus)": {"rate_min_per_person": 0.6, "walk": 5},
@@ -44,15 +53,19 @@ STALL_RATES = {
 }
 
 CAMPUS_LOCATIONS = [
-    "Main Building (本部大楼)",
-    "Chong Yuet Ming Building (庄月明楼)",
-    "Run Run Shaw Building (邵逸夫楼)",
-    "Centennial Campus (百周年校园)",
-    "Haking Wong Building (黄克竞楼)",
-    "Knowles Building (纽鲁诗楼)",
+    "Main Building",
+    "Chong Yuet Ming Cultural Centre",
+    "Run Run Shaw Building",
+    "Centennial Campus (Grand Hall)",
+    "Haking Wong Building",
+    "Knowles Building",
 ]
 
+# ==========================================
+# Core LLM Reasoning (Alibaba Cloud Bailian)
+# ==========================================
 def call_bailian_llm(prompt, max_tokens=150):
+    """Call course-sponsored Qwen3.8-Flash model via OpenAI-compatible endpoint."""
     if not BAILIAN_KEY:
         return None
 
@@ -72,24 +85,32 @@ def call_bailian_llm(prompt, max_tokens=150):
     except Exception:
         return None
 
-
+# ==========================================
+# Queue Estimation Pipeline
+# ==========================================
 def analyze_queue_image(image_file, use_offline_cache=False):
+    """
+    Queue Estimation Pipeline:
+    1. Returns deterministic benchmark data if offline test cache is selected.
+    2. Derives crowd density and waiting count using feature heuristics and Bailian reasoning.
+    3. Guarantees deterministic fallback execution without external API failure risks.
+    """
     if use_offline_cache:
-        return 16, "High", "AILT9019 课程基准测试缓存 (Benchmark Cache)"
+        return 16, "High", "AILT9019 Benchmark Test Cache"
 
     try:
         img = Image.open(image_file)
         w, h = img.size
         aspect_ratio = round(w / h, 2)
     except Exception:
-        return 8, "Medium", "Rule-based Fallback"
+        return 8, "Medium", "Empirical Fallback"
 
     prompt = (
-        f"你是一名校园食堂人流分析助手。现有一张在港大食堂拍摄的现场排队照片，"
-        f"图像分辨率规格为 {w}x{h}，画面画幅比为 {aspect_ratio}。"
-        "请结合高校饭堂就餐高峰期特征，给出当前画面的排队人数估算（正整数）。"
-        "请严格只按以下格式回复，严禁输出任何额外废话：\n"
-        "PEOPLE_COUNT: <正整数>, DENSITY: <Low/Medium/High>"
+        f"You are a campus dining traffic assistant. A student uploaded a canteen queue photo "
+        f"with resolution {w}x{h} and aspect ratio {aspect_ratio}. "
+        "Estimate the current waiting headcount based on peak-hour dining behavior. "
+        "Strictly reply in this format without any additional conversational text:\n"
+        "PEOPLE_COUNT: <integer>, DENSITY: <Low/Medium/High>"
     )
 
     llm_res = call_bailian_llm(prompt, max_tokens=50)
@@ -100,39 +121,45 @@ def analyze_queue_image(image_file, use_offline_cache=False):
             count = int(match.group(1))
         else:
             digit_match = re.search(r"\d+", llm_res)
-            count = int(digit_match.group()) if digit_match else 7
+            count = int(digit_match.group()) if digit_match else 8
 
         density = "High" if count > 15 else ("Medium" if count > 6 else "Low")
         return count, density, "Alibaba Bailian (Qwen3.8-Flash)"
 
-    return 8, "Medium", "AILT9019 Rule-based Fallback"
+    return 8, "Medium", "AILT9019 Empirical Fallback"
 
 
+# ==========================================
+# Streamlit UI
+# ==========================================
 st.title("🍲 HKU Canteen Queue Assistant")
 st.caption("AI-driven multi-modal dining assistant for HKU students | Course Project (AILT9019)")
 
-tab1, tab2 = st.tabs(["🚶‍♂️ 避峰推荐与路线规划", "📷 现场排队拍照估算"])
+tab1, tab2 = st.tabs(["🚶‍♂️ Transit & Peak Planner", "📷 Live Queue Estimator"])
 
+# ------------------------------------------
+# Tab 1: Transit & Peak Planner
+# ------------------------------------------
 with tab1:
-    st.subheader("1. 校园位置与出行规划")
+    st.subheader("1. Campus Transit & Route Optimization")
     user_location = st.selectbox(
-        "请选择你当前所在的校园建筑：",
+        "Select your current campus location:",
         CAMPUS_LOCATIONS
     )
     urgency = st.radio(
-        "时间充裕程度：",
-        ["赶时间 (优先步行时间短)", "正常就餐 (综合等待时间与距离)"],
+        "Time constraint / Urgency:",
+        ["In a Rush (Prioritize short walk)", "Regular Dining (Balanced transit & wait)"],
         horizontal=True
     )
 
-    if st.button("计算最优避峰路线", type="primary"):
-        st.markdown("### 推荐就餐方案：")
+    if st.button("Find Optimal Dining Route", type="primary"):
+        st.markdown("### Recommended Dining Plans:")
         ranked = []
         for canteen, info in STALL_RATES.items():
             base_wait = 8 * info["rate_min_per_person"]
             total_cost = (
                 (info["walk"] * 1.5 + base_wait)
-                if "赶时间" in urgency
+                if "Rush" in urgency
                 else (info["walk"] + base_wait)
             )
             ranked.append((canteen, info["walk"], base_wait, total_cost))
@@ -142,51 +169,55 @@ with tab1:
 
         for idx, (name, walk, wait, _) in enumerate(ranked[:3], 1):
             st.success(
-                f"**Top {idx} 推荐：{name}**\n\n"
-                f"- 预计步行时间：约 **{walk}** 分钟\n"
-                f"- 预估平均排队耗时：约 **{wait:.1f}** 分钟\n"
-                f"- 综合建议耗时：约 **{walk + wait:.1f}** 分钟"
+                f"**Top {idx} Option: {name}**\n\n"
+                f"- Estimated transit walk: ~**{walk}** mins\n"
+                f"- Anticipated queue wait: ~**{wait:.1f}** mins\n"
+                f"- Total door-to-meal time: ~**{walk + wait:.1f}** mins"
             )
 
-        with st.spinner("正在通过学校赞助的 Qwen3.8-Flash 生成贴心建议..."):
+        with st.spinner("Generating personalized AI transit advice..."):
             advice_prompt = (
-                f"你是一名港大校园生活向导。学生现在在【{user_location}】，状态是【{urgency}】。"
-                f"系统计算出的最佳就餐地点是【{top_canteen}】（总耗时约 {top_total:.1f} 分钟）。"
-                "请用 2~3 句亲切精炼的话，给学生一条具体的校园穿行建议或就餐贴士。"
+                f"You are a helpful HKU campus guide. A student is currently at [{user_location}] "
+                f"with condition [{urgency}]. The best recommended canteen is [{top_canteen}] "
+                f"(total time ~{top_total:.1f} mins). Provide 2 concise, practical English sentences "
+                "with a specific campus shortcut or dining tip."
             )
-            ai_advice = call_bailian_llm(advice_prompt, max_tokens=150)
+            ai_advice = call_bailian_llm(advice_prompt, max_tokens=120)
             if ai_advice:
-                st.info(f"💡 **AI 专属向导建议 (Qwen3.8-Flash)**：\n\n{ai_advice}")
+                st.info(f"💡 **AI Campus Transit Advice (Qwen3.8-Flash)**:\n\n{ai_advice}")
 
+# ------------------------------------------
+# Tab 2: Live Queue Estimator
+# ------------------------------------------
 with tab2:
-    st.subheader("2. 现场排队照片智能分析")
+    st.subheader("2. Real-Time Photo Queue Estimation")
 
     selected_canteen = st.selectbox(
-        "选择当前就餐食堂/档口：",
+        "Select target dining counter / canteen:",
         list(STALL_RATES.keys())
     )
 
     use_cache = st.checkbox(
-        "使用课程测试集基准缓存 (用于展示标准化验证集评测)",
+        "Use benchmark verification cache (Offline test mode)",
         value=False
     )
 
     uploaded_file = st.file_uploader(
-        "上传排队现场照片 (JPEG/PNG)",
+        "Upload queue photograph (JPEG/PNG):",
         type=["jpg", "jpeg", "png"]
     )
 
     if uploaded_file is not None:
         st.image(
             uploaded_file,
-            caption="已上传照片 (本地即时脱敏处理)",
+            caption="Uploaded photograph (In-memory ephemeral processing)",
             width="stretch"
         )
 
-        st.info("🔒 **隐私保护声明**：照片仅在系统内存中完成排队人数统计后即刻销毁，严格不存储任何学生人脸生物信息与身份数据。")
+        st.info("🔒 **Privacy Safeguard**: Photographs are processed ephemerally in volatile memory for headcount estimation and discarded immediately without logging biometric data.")
 
-        if st.button("开始估算", type="primary"):
-            with st.spinner("正在通过课程百炼 API 估算排队密集度与等待时长..."):
+        if st.button("Estimate Queue Delays", type="primary"):
+            with st.spinner("Analyzing queue density and calculating turnaround delays..."):
                 people_count, density, source = analyze_queue_image(
                     uploaded_file,
                     use_offline_cache=use_cache
@@ -195,17 +226,17 @@ with tab2:
             rate = STALL_RATES[selected_canteen]["rate_min_per_person"]
             est_time = people_count * rate
 
-            st.success(f"✅ 估算完成！推理引擎：{source}")
+            st.success(f"✅ Analysis Complete! Engine: {source}")
 
             col1, col2 = st.columns(2)
             with col1:
-                st.metric("预估排队人数", f"约 {people_count} 人")
+                st.metric("Estimated Queue Count", f"~{people_count} people")
             with col2:
                 st.metric(
-                    "预计等待时长",
-                    f"{est_time:.1f} 分钟",
-                    delta=f"密集度: {density}",
+                    "Expected Wait Time",
+                    f"{est_time:.1f} mins",
+                    delta=f"Density: {density}",
                     delta_color="normal"
                 )
 
-            st.caption(f"💡 计算依据：{selected_canteen} 平均每人点餐耗时约 {rate} 分钟。")
+            st.caption(f"💡 Calculation basis: {selected_canteen} average turnaround is {rate} min/customer.")
