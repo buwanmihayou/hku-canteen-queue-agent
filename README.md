@@ -88,4 +88,4 @@ Option B: Offline Fallback Verification (Zero External APIs)
 
 ## License and Course Attribution
 
-Developed for AILT9019: Generative AI and Code Agents (Group 37) at The University of Hong Kong (HKU)[cite: 10]. Provided strictly for academic evaluation and research purposes.
+Developed for AILT9019: Generative AI and Code Agents (Group 37) at The University of Hong Kong (HKU). Provided strictly for academic evaluation and research purposes.
