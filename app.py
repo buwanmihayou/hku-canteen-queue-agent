@@ -19,7 +19,19 @@ st.set_page_config(
 # ==========================================
 # Retrieve & Clean Bailian API Configuration
 # ==========================================
-raw_bailian_key = st.secrets.get("DASHSCOPE_API_KEY", os.getenv("DASHSCOPE_API_KEY", ""))
+def _safe_get_secret(key, env_default=None):
+    """Read from Streamlit secrets if available; otherwise fall back to env vars.
+
+    Local runs without a secrets.toml file raise StreamlitSecretNotFoundError,
+    so we catch that and read from the environment instead.
+    """
+    try:
+        return st.secrets.get(key, os.getenv(key, env_default or ""))
+    except Exception:
+        return os.getenv(key, env_default or "")
+
+
+raw_bailian_key = _safe_get_secret("DASHSCOPE_API_KEY")
 BAILIAN_KEY = (
     str(raw_bailian_key)
     .replace("\n", "")
@@ -30,12 +42,9 @@ BAILIAN_KEY = (
     else None
 )
 
-raw_base_url = st.secrets.get(
+raw_base_url = _safe_get_secret(
     "DASHSCOPE_BASE_URL",
-    os.getenv(
-        "DASHSCOPE_BASE_URL",
-        "https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1"
-    )
+    "https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1",
 )
 BAILIAN_BASE_URL = (
     str(raw_base_url).strip().rstrip("/")
@@ -69,7 +78,7 @@ CAMPUS_LOCATIONS = [
 def call_bailian_llm(prompt, max_tokens=150):
     """Call course-sponsored Qwen3.8-Flash model via OpenAI-compatible endpoint (text-only)."""
     if not BAILIAN_KEY:
-        return None
+        return None, "API key not configured"
 
     try:
         from openai import OpenAI
@@ -83,15 +92,15 @@ def call_bailian_llm(prompt, max_tokens=150):
             max_tokens=max_tokens,
             timeout=12
         )
-        return response.choices[0].message.content
-    except Exception:
-        return None
+        return response.choices[0].message.content, None
+    except Exception as e:
+        return None, f"Bailian API error: {str(e)}"
 
 
 def call_bailian_vlm(prompt, image_base64, max_tokens=80):
     """Call Qwen3.8-Flash with multimodal (text + image) input via OpenAI-compatible endpoint."""
     if not BAILIAN_KEY:
-        return None
+        return None, "API key not configured"
 
     try:
         from openai import OpenAI
@@ -112,9 +121,9 @@ def call_bailian_vlm(prompt, image_base64, max_tokens=80):
             max_tokens=max_tokens,
             timeout=20
         )
-        return response.choices[0].message.content
-    except Exception:
-        return None
+        return response.choices[0].message.content, None
+    except Exception as e:
+        return None, f"Bailian VLM error: {str(e)}"
 
 # ==========================================
 # Queue Estimation Pipeline
@@ -154,7 +163,10 @@ def analyze_queue_image(image_file, use_offline_cache=False):
         "PEOPLE_COUNT: <integer>, DENSITY: <Low/Medium/High>"
     )
 
-    llm_res = call_bailian_vlm(prompt, img_base64, max_tokens=50)
+    llm_res, err = call_bailian_vlm(prompt, img_base64, max_tokens=50)
+
+    if err:
+        return 8, "Medium", f"AILT9019 Empirical Fallback ({err})"
 
     if llm_res:
         match = re.search(r"PEOPLE_COUNT:\s*(\d+)", llm_res)
@@ -228,11 +240,11 @@ with tab1:
                 f"(total time ~{top_total:.1f} mins). Provide 2 concise, practical English sentences "
                 "with a specific campus shortcut or dining tip."
             )
-            ai_advice = call_bailian_llm(advice_prompt, max_tokens=120)
+            ai_advice, err = call_bailian_llm(advice_prompt, max_tokens=120)
             if ai_advice:
                 st.info(f"💡 **AI Campus Transit Advice (Qwen3.8-Flash)**:\n\n{ai_advice}")
             else:
-                st.warning("⚠️ AI transit advice unavailable (API key not configured or request timed out). Showing heuristic tip instead.")
+                st.warning(f"⚠️ AI transit advice unavailable: {err or 'Unknown error'}. Showing heuristic tip instead.")
                 st.info(f"💡 **Tip**: Head to **{top_canteen}** — ~{top_walk} min walk + ~{top_wait:.1f} min queue = ~{top_total:.1f} min total. Leave a few minutes early to beat the rush.")
 
 # ------------------------------------------
