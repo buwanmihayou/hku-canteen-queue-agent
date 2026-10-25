@@ -275,7 +275,7 @@ with tab2:
         st.image(
             uploaded_file,
             caption="Uploaded photograph (In-memory ephemeral processing)",
-            use_container_width=True
+            width="stretch"
         )
 
         st.info("🔒 **Privacy Safeguard**: Photographs are processed ephemerally in volatile memory for headcount estimation and discarded immediately without logging biometric data.")
