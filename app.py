@@ -44,13 +44,18 @@ BAILIAN_KEY = (
 
 raw_base_url = _safe_get_secret(
     "DASHSCOPE_BASE_URL",
-    "https://dashscope.aliyuncs.com/compatible-mode/v1",
+    "",
 )
-BAILIAN_BASE_URL = (
-    str(raw_base_url).strip().rstrip("/")
-    if raw_base_url
-    else "https://dashscope.aliyuncs.com/compatible-mode/v1"
-)
+
+# Auto-select base URL based on API key type:
+# - Token Plan keys (sk-sp-*) require token-plan.cn-beijing.maas.aliyuncs.com
+# - General API keys (sk-ws-*, sk-or-*, etc.) require dashscope.aliyuncs.com
+if raw_base_url:
+    BAILIAN_BASE_URL = str(raw_base_url).strip().rstrip("/")
+elif BAILIAN_KEY and BAILIAN_KEY.startswith("sk-sp-"):
+    BAILIAN_BASE_URL = "https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1"
+else:
+    BAILIAN_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
 
 # ==========================================
 # HKU Dining & Transit Knowledge Base
