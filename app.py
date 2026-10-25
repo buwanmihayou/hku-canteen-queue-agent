@@ -189,15 +189,17 @@ with tab1:
     st.subheader("1. Campus Transit & Route Optimization")
     user_location = st.selectbox(
         "Select your current campus location:",
-        CAMPUS_LOCATIONS
+        CAMPUS_LOCATIONS,
+        key="tab1_location"
     )
     urgency = st.radio(
         "Time constraint / Urgency:",
         ["In a Rush (Prioritize short walk)", "Regular Dining (Balanced transit & wait)"],
-        horizontal=True
+        horizontal=True,
+        key="tab1_urgency"
     )
 
-    if st.button("Find Optimal Dining Route", type="primary"):
+    if st.button("Find Optimal Dining Route", type="primary", key="tab1_btn"):
         st.markdown("### Recommended Dining Plans:")
         ranked = rank_canteens(
             STALL_RATES,
@@ -229,6 +231,9 @@ with tab1:
             ai_advice = call_bailian_llm(advice_prompt, max_tokens=120)
             if ai_advice:
                 st.info(f"💡 **AI Campus Transit Advice (Qwen3.8-Flash)**:\n\n{ai_advice}")
+            else:
+                st.warning("⚠️ AI transit advice unavailable (API key not configured or request timed out). Showing heuristic tip instead.")
+                st.info(f"💡 **Tip**: Head to **{top_canteen}** — ~{top_walk} min walk + ~{top_wait:.1f} min queue = ~{top_total:.1f} min total. Leave a few minutes early to beat the rush.")
 
 # ------------------------------------------
 # Tab 2: Live Queue Estimator
@@ -238,29 +243,32 @@ with tab2:
 
     selected_canteen = st.selectbox(
         "Select target dining counter / canteen:",
-        list(STALL_RATES.keys())
+        list(STALL_RATES.keys()),
+        key="tab2_canteen"
     )
 
     use_cache = st.checkbox(
         "Use benchmark verification cache (Offline test mode)",
-        value=False
+        value=False,
+        key="tab2_cache"
     )
 
     uploaded_file = st.file_uploader(
         "Upload queue photograph (JPEG/PNG):",
-        type=["jpg", "jpeg", "png"]
+        type=["jpg", "jpeg", "png"],
+        key="tab2_uploader"
     )
 
     if uploaded_file is not None:
         st.image(
             uploaded_file,
             caption="Uploaded photograph (In-memory ephemeral processing)",
-            width="stretch"
+            use_container_width=True
         )
 
         st.info("🔒 **Privacy Safeguard**: Photographs are processed ephemerally in volatile memory for headcount estimation and discarded immediately without logging biometric data.")
 
-        if st.button("Estimate Queue Delays", type="primary"):
+        if st.button("Estimate Queue Delays", type="primary", key="tab2_btn"):
             with st.spinner("VLM analyzing queue photo for crowd density & headcount..."):
                 people_count, density, source = analyze_queue_image(
                     uploaded_file,
