@@ -44,12 +44,12 @@ BAILIAN_KEY = (
 
 raw_base_url = _safe_get_secret(
     "DASHSCOPE_BASE_URL",
-    "https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1",
+    "https://dashscope.aliyuncs.com/compatible-mode/v1",
 )
 BAILIAN_BASE_URL = (
     str(raw_base_url).strip().rstrip("/")
     if raw_base_url
-    else "https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1"
+    else "https://dashscope.aliyuncs.com/compatible-mode/v1"
 )
 
 # ==========================================
