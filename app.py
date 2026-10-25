@@ -1,7 +1,7 @@
 import os
 import re
 import io
-import time
+import base64
 from PIL import Image
 import streamlit as st
 
@@ -67,7 +67,7 @@ CAMPUS_LOCATIONS = [
 # Core LLM Reasoning (Alibaba Cloud Bailian)
 # ==========================================
 def call_bailian_llm(prompt, max_tokens=150):
-    """Call course-sponsored Qwen3.8-Flash model via OpenAI-compatible endpoint."""
+    """Call course-sponsored Qwen3.8-Flash model via OpenAI-compatible endpoint (text-only)."""
     if not BAILIAN_KEY:
         return None
 
@@ -87,6 +87,35 @@ def call_bailian_llm(prompt, max_tokens=150):
     except Exception:
         return None
 
+
+def call_bailian_vlm(prompt, image_base64, max_tokens=80):
+    """Call Qwen3.8-Flash with multimodal (text + image) input via OpenAI-compatible endpoint."""
+    if not BAILIAN_KEY:
+        return None
+
+    try:
+        from openai import OpenAI
+        client = OpenAI(
+            api_key=BAILIAN_KEY,
+            base_url=BAILIAN_BASE_URL
+        )
+        data_url = f"data:image/jpeg;base64,{image_base64}"
+        response = client.chat.completions.create(
+            model="qwen3.8-flash",
+            messages=[{
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": prompt},
+                    {"type": "image_url", "image_url": {"url": data_url}},
+                ],
+            }],
+            max_tokens=max_tokens,
+            timeout=20
+        )
+        return response.choices[0].message.content
+    except Exception:
+        return None
+
 # ==========================================
 # Queue Estimation Pipeline
 # ==========================================
@@ -94,28 +123,38 @@ def analyze_queue_image(image_file, use_offline_cache=False):
     """
     Queue Estimation Pipeline:
     1. Returns deterministic benchmark data if offline test cache is selected.
-    2. Derives crowd density and waiting count using feature heuristics and Bailian reasoning.
+    2. Compresses the uploaded image in-memory, encodes to base64, and sends it
+       as a multimodal (image + text) request to Qwen3.8-Flash for true VLM inference.
     3. Guarantees deterministic fallback execution without external API failure risks.
+    All image processing is ephemeral — nothing is persisted to disk.
     """
+    # Mode 1: Offline benchmark cache
     if use_offline_cache:
         return 16, "High", "AILT9019 Benchmark Test Cache"
 
+    # Mode 2: Live VLM — compress image and send to Qwen3.8-Flash
     try:
         img = Image.open(image_file)
-        w, h = img.size
-        aspect_ratio = round(w / h, 2)
+        if img.mode != "RGB":
+            img = img.convert("RGB")
+        # Compress to max 800x800, JPEG quality 80 (keeps payload small for API)
+        img.thumbnail((800, 800), Image.Resampling.LANCZOS)
+        buffer = io.BytesIO()
+        img.save(buffer, format="JPEG", quality=80)
+        img_bytes = buffer.getvalue()
+        img_base64 = base64.b64encode(img_bytes).decode("utf-8")
     except Exception:
         return 8, "Medium", "Empirical Fallback"
 
     prompt = (
-        f"You are a campus dining traffic assistant. A student uploaded a canteen queue photo "
-        f"with resolution {w}x{h} and aspect ratio {aspect_ratio}. "
-        "Estimate the current waiting headcount based on peak-hour dining behavior. "
+        "You are a campus dining traffic assistant. Look at this photo of a university "
+        "canteen queue and estimate how many people are visible waiting in line. "
+        "Also assess the crowd density. "
         "Strictly reply in this format without any additional conversational text:\n"
         "PEOPLE_COUNT: <integer>, DENSITY: <Low/Medium/High>"
     )
 
-    llm_res = call_bailian_llm(prompt, max_tokens=50)
+    llm_res = call_bailian_vlm(prompt, img_base64, max_tokens=50)
 
     if llm_res:
         match = re.search(r"PEOPLE_COUNT:\s*(\d+)", llm_res)
@@ -125,8 +164,12 @@ def analyze_queue_image(image_file, use_offline_cache=False):
             digit_match = re.search(r"\d+", llm_res)
             count = int(digit_match.group()) if digit_match else 8
 
-        density = "High" if count > 15 else ("Medium" if count > 6 else "Low")
-        return count, density, "Alibaba Bailian (Qwen3.8-Flash)"
+        density_match = re.search(r"DENSITY:\s*(\w+)", llm_res, re.IGNORECASE)
+        if density_match:
+            density = density_match.group(1).capitalize()
+        else:
+            density = "High" if count > 15 else ("Medium" if count > 6 else "Low")
+        return count, density, "Alibaba Bailian VLM (Qwen3.8-Flash)"
 
     return 8, "Medium", "AILT9019 Empirical Fallback"
 
@@ -218,7 +261,7 @@ with tab2:
         st.info("🔒 **Privacy Safeguard**: Photographs are processed ephemerally in volatile memory for headcount estimation and discarded immediately without logging biometric data.")
 
         if st.button("Estimate Queue Delays", type="primary"):
-            with st.spinner("Analyzing queue density and calculating turnaround delays..."):
+            with st.spinner("VLM analyzing queue photo for crowd density & headcount..."):
                 people_count, density, source = analyze_queue_image(
                     uploaded_file,
                     use_offline_cache=use_cache
