@@ -156,7 +156,7 @@ def analyze_queue_image(image_file, use_offline_cache=False):
         return 8, "Medium", "Empirical Fallback"
 
     prompt = (
-        "You are a campus dining traffic assistant. Look at this photo of a university "
+        "You are a campus dining traffic assistant. Look at this photo of this canteen of the University of Hong Kong. "
         "canteen queue and estimate how many people are visible waiting in line. "
         "Also assess the crowd density. "
         "Strictly reply in this format without any additional conversational text:\n"
