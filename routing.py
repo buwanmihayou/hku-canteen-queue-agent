@@ -41,7 +41,7 @@ WALK_TIMES = {
         "OORI HANSIK (Shop G. 01, G/F, Composite Building, Main Campus)": 3,
     },
     "Haking Wong Building": {
-        "CYM Canteen (Chong Yuet Ming Cultural Centre)": ,7
+        "CYM Canteen (Chong Yuet Ming Cultural Centre)": 7,
         "JuYing Tai (Fong Shu Chuen Amenities Centre, Swire Building)": 8,
         "Union Restaurant (Haking Wong Building)": 1,
         "alfafa bistro (Jockey Club Tower, Centennial Campus)": 5,
