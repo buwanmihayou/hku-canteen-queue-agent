@@ -53,9 +53,9 @@ def test_vlm(image_path: str):
             "role": "user",
             "content": [
                 {"type": "text", "text": (
-                    "You are a campus dining traffic assistant. Look at this photo of a "
-                    "university canteen queue and estimate how many people are visible waiting "
-                    "in line. Also assess the crowd density. "
+                    "You are a campus dining traffic assistant. Look at this photo of the University of Hong Kong's canteen queue."
+                    "Estimate how many people are visible waiting in line "
+                    " Also assess the crowd density. "
                     "Strictly reply in this format:\n"
                     "PEOPLE_COUNT: <integer>, DENSITY: <Low/Medium/High>"
                 )},
