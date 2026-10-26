@@ -56,12 +56,12 @@ BAILIAN_BASE_URL = (
 # HKU Dining & Transit Knowledge Base
 # ==========================================
 STALL_RATES = {
-    "CYM Canteen (Chong Yuet Ming Cultural Centre)": {"rate_min_per_person": 0.6},
+    "CYM Canteen (Chong Yuet Ming Cultural Centre)": {"rate_min_per_person": 0.8},
     "JuYing Tai (Fong Shu Chuen Amenities Centre, Swire Building)": {"rate_min_per_person": 0.6},
-    "Union Restaurant (Haking Wong Building)": {"rate_min_per_person": 0.6},
-    "alfafa bistro (Jockey Club Tower, Centennial Campus)": {"rate_min_per_person": 1.0},
+    "Union Restaurant (Haking Wong Building)": {"rate_min_per_person": 0.8},
+    "alfafa bistro (Jockey Club Tower, Centennial Campus)": {"rate_min_per_person": 1.2},
     "TAI TAI FOODTOPIA (Shop G. 02, G/F, Composite Building, Main Campus)": {"rate_min_per_person": 1.0},
-    "TamJai SamGor (G/F The Jockey Club Tower, Centennial Campus)": {"rate_min_per_person": 1.0},
+    "TamJai SamGor (G/F The Jockey Club Tower, Centennial Campus)": {"rate_min_per_person": 1.5},
     "Asian Gourmet (G/F, Run Run Shaw Tower, Centennial Campus)": {"rate_min_per_person": 1.5},
     "OORI HANSIK (Shop G. 01, G/F, Composite Building, Main Campus)": {"rate_min_per_person": 2.0},
 }
