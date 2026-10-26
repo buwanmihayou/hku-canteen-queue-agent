@@ -56,11 +56,14 @@ BAILIAN_BASE_URL = (
 # HKU Dining & Transit Knowledge Base
 # ==========================================
 STALL_RATES = {
-    "CYM Canteen (Chong Yuet Ming Cultural Centre)": {"rate_min_per_person": 1.2},
+    "CYM Canteen (Chong Yuet Ming Cultural Centre)": {"rate_min_per_person": 0.6},
     "JuYing Tai (Fong Shu Chuen Amenities Centre, Swire Building)": {"rate_min_per_person": 0.6},
-    "Union Restaurant (Haking Wong Building)": {"rate_min_per_person": 0.8},
+    "Union Restaurant (Haking Wong Building)": {"rate_min_per_person": 0.6},
     "alfafa bistro (Jockey Club Tower, Centennial Campus)": {"rate_min_per_person": 1.0},
-    "TAI TAI FOODTOPIA (Composite Building)": {"rate_min_per_person": 0.7},
+    "TAI TAI FOODTOPIA (Shop G. 02, G/F, Composite Building, Main Campus)": {"rate_min_per_person": 1.0},
+    "TamJai SamGor (G/F The Jockey Club Tower, Centennial Campus)": {"rate_min_per_person": 1.0},
+    "Asian Gourmet (G/F, Run Run Shaw Tower, Centennial Campus)": {"rate_min_per_person": 1.5},
+    "OORI HANSIK (Shop G. 01, G/F, Composite Building, Main Campus)": {"rate_min_per_person": 2.0},
 }
 
 CAMPUS_LOCATIONS = [
@@ -70,6 +73,7 @@ CAMPUS_LOCATIONS = [
     "Centennial Campus (Grand Hall)",
     "Haking Wong Building",
     "Knowles Building",
+    "KKL Building",
 ]
 
 # ==========================================
@@ -156,8 +160,8 @@ def analyze_queue_image(image_file, use_offline_cache=False):
         return 8, "Medium", "Empirical Fallback"
 
     prompt = (
-        "You are a campus dining traffic assistant. Look at this photo of this canteen of the University of Hong Kong. "
-        "canteen queue and estimate how many people are visible waiting in line. "
+        "You are a campus dining traffic assistant. Look at this photo of this canteen's queue of the University of Hong Kong. "
+        "Estimate how many people are visible waiting in line. "
         "Also assess the crowd density. "
         "Strictly reply in this format without any additional conversational text:\n"
         "PEOPLE_COUNT: <integer>, DENSITY: <Low/Medium/High>"
