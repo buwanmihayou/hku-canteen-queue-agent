@@ -4,11 +4,11 @@ from routing import WALK_TIMES, rank_canteens
 
 
 STALL_RATES = {
-    "CYM Canteen (Chong Yuet Ming Cultural Centre)": {"rate_min_per_person": 1.2},
+    "CYM Canteen (Chong Yuet Ming Cultural Centre)": {"rate_min_per_person": 1.0},
     "JuYing Tai (Fong Shu Chuen Amenities Centre, Swire Building)": {"rate_min_per_person": 0.6},
     "Union Restaurant (Haking Wong Building)": {"rate_min_per_person": 0.8},
     "alfafa bistro (Jockey Club Tower, Centennial Campus)": {"rate_min_per_person": 1.0},
-    "TAI TAI FOODTOPIA (Composite Building)": {"rate_min_per_person": 0.7},
+    "TAI TAI FOODTOPIA (Composite Building)": {"rate_min_per_person": 1.0},
 }
 
 
