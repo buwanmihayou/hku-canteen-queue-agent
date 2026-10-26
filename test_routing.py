@@ -8,7 +8,7 @@ STALL_RATES = {
     "JuYing Tai (Fong Shu Chuen Amenities Centre, Swire Building)": {"rate_min_per_person": 0.6},
     "Union Restaurant (Haking Wong Building)": {"rate_min_per_person": 0.8},
     "alfafa bistro (Jockey Club Tower, Centennial Campus)": {"rate_min_per_person": 1.0},
-    "TAI TAI FOODTOPIA (Composite Building)": {"rate_min_per_person": 1.0},
+    "TAI TAI FOODTOPIA (Shop G. 02, G/F, Composite Building, Main Campus)": {"rate_min_per_person": 1.0},
 }
 
 
