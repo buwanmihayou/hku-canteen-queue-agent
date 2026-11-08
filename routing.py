@@ -1,3 +1,7 @@
+"""Location-aware dining ranking using provisional HK time-of-day demand."""
+
+from calibration import estimate_wait_minutes, hong_kong_time
+
 # Estimated walking times in minutes.
 WALK_TIMES = {
     "Main Building": {
@@ -73,7 +77,12 @@ WALK_TIMES = {
 }
 
 
-def rank_canteens(stall_rates, user_location, prioritize_short_walk=False):
+def rank_canteens(stall_rates, user_location, prioritize_short_walk=False, dining_time=None, queue_counts=None):
+    """Return (canteen, walk, wait, total, score) ranked by total/urgency cost.
+
+    Missing observed counts use time-of-day assumptions. Explicit manual counts
+    replace those assumptions; they are never multiplied by demand a second time.
+    """
     if user_location not in WALK_TIMES:
         raise ValueError(f"Unknown campus location: {user_location}")
 
@@ -83,10 +92,21 @@ def rank_canteens(stall_rates, user_location, prioritize_short_walk=False):
         missing = ", ".join(sorted(missing_canteens))
         raise ValueError(f"Missing walking-time estimates for: {missing}")
 
+    dining_time = hong_kong_time(dining_time)
+    queue_counts = {} if queue_counts is None else queue_counts
+    unknown_counts = set(queue_counts) - set(stall_rates)
+    if unknown_counts:
+        raise ValueError(f"Queue counts include unknown canteens: {', '.join(sorted(unknown_counts))}")
+
     ranked = []
     for canteen, info in stall_rates.items():
         walk = location_walk_times[canteen]
-        wait = 8 * info["rate_min_per_person"]
+        wait = estimate_wait_minutes(
+            canteen,
+            people_count=queue_counts.get(canteen),
+            dining_time=dining_time,
+            rate_min_per_person=info["rate_min_per_person"],
+        )
         total = walk + wait
         score = walk * 1.5 + wait if prioritize_short_walk else total
         ranked.append((canteen, walk, wait, total, score))

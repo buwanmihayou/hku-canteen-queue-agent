@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#143a32">
+  <meta name="description" content="HKU dining route estimates and manual queue calculator that work offline.">
+  <title>HKU Canteen Offline Planner</title>
+  %%MANIFEST%%
+  <style>%%STYLE%%</style>
+</head>
+<body>
+  <main>
+    <header>
+      <p class="eyebrow">AILT9019 · Group 37</p>
+      <h1>HKU Canteen Offline Planner</h1>
+      <p>Plan a walk to lunch, or enter the queue you can see.</p>
+      <p id="offline-status" class="status" role="status">Ready. All calculations run on this device.</p>
+    </header>
+    <p class="notice"><strong>Estimated queues, not live data.</strong> Time-of-day assumptions and service rates need field validation. Canteen opening hours are not checked. Walking times vary with stairs, lifts and walking pace.</p>
+    <section aria-labelledby="route-heading">
+      <h2 id="route-heading">Find a dining route</h2>
+      <form id="route-form">
+        <label for="origin">Current campus location</label>
+        <select id="origin" name="origin" required></select>
+        <label for="dining-time">Dining time in Hong Kong</label>
+        <input id="dining-time" name="dining-time" type="time" step="60" required>
+        <label class="check"><input id="rush" type="checkbox"> Prioritize a shorter walk</label>
+        <button type="submit">Find top 3 canteens</button>
+      </form>
+      <p id="route-error" class="error" role="alert"></p>
+      <div id="routes" aria-live="polite"></div>
+    </section>
+    <section aria-labelledby="queue-heading">
+      <h2 id="queue-heading">Calculate from a manual headcount</h2>
+      <p>Count people waiting at one counter. This replaces the time-of-day assumption for this calculation.</p>
+      <form id="queue-form">
+        <label for="canteen">Canteen</label>
+        <select id="canteen" name="canteen" required></select>
+        <label for="headcount">People waiting</label>
+        <input id="headcount" name="headcount" type="number" inputmode="numeric" min="0" max="10000" step="1" value="8" required>
+        <button type="submit">Calculate wait</button>
+      </form>
+      <p id="queue-error" class="error" role="alert"></p>
+      <p id="queue-result" aria-live="polite"></p>
+    </section>
+    <footer>
+      <p>No API key, image upload or network connection is needed for these calculations. Entries stay on this page and are not saved.</p>
+      <p>Save the downloaded HTML file before disconnecting. For the hosted PWA, open it once while connected and wait for the offline-ready message.</p>
+      <noscript>This planner needs JavaScript enabled to calculate routes.</noscript>
+    </footer>
+  </main>
+  <script id="planner-data" type="application/json">%%DATA%%</script>
+  <script>%%CORE%%</script>
+  <script>%%SCRIPT%%</script>
+  %%REGISTER%%
+</body>
+</html>

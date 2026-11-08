@@ -1,0 +1,3 @@
+images/*
+!images/.gitkeep
+report*.json

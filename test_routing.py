@@ -1,4 +1,5 @@
 import unittest
+from datetime import time
 
 from routing import WALK_TIMES, rank_canteens
 
@@ -22,13 +23,13 @@ class RoutingTests(unittest.TestCase):
             self.assertEqual(set(walk_times), expected, location)
 
     def test_selected_location_changes_recommendation(self):
-        cym_results = rank_canteens(STALL_RATES, "Chong Yuet Ming Cultural Centre")
-        centennial_results = rank_canteens(STALL_RATES, "Centennial Campus (Grand Hall)")
+        cym_results = rank_canteens(STALL_RATES, "Chong Yuet Ming Cultural Centre", dining_time=time(12))
+        centennial_results = rank_canteens(STALL_RATES, "Centennial Campus (Grand Hall)", dining_time=time(12))
 
         cym_order = [result[0] for result in cym_results]
         centennial_order = [result[0] for result in centennial_results]
         self.assertNotEqual(cym_order, centennial_order)
-        self.assertNotEqual(cym_results[0][1], centennial_results[0][1])
+        self.assertNotEqual(cym_results[0][0], centennial_results[0][0])
 
     def test_total_is_walk_plus_wait(self):
         for _, walk, wait, total, _ in rank_canteens(STALL_RATES, "Main Building"):

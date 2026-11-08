@@ -1,91 +1,81 @@
-# HKU Canteen Peak-Hour Queue Assistant
+# HKU Canteen Queue Assistant
 
-An AI-powered dining and transit optimization system engineered for The University of Hong Kong (HKU) community to alleviate peak-hour dining congestion (11:50-13:30 and 17:30-19:00).
+Implementation of the three follow-up milestones in Group 37's midterm status sheet.
+The planner covers 8 canteens and 7 starting locations. All queue curves, service
+rates and walking times remain empirical assumptions awaiting field validation.
 
-The system integrates a hybrid decision-making architecture: combining empirical path-finding algorithms with Alibaba Cloud Bailian (Qwen3.8-Flash) personalized guidance, zero-shot queue analysis, and deterministic fallback caches, served via a Streamlit web interface.
+## Run
 
-Live Cloud Demo: https://hku-canteen-agent.streamlit.app
-(No local installation or GPU required for peer reviewers and teaching team)
+Use Python 3.12 (tested on Windows with Streamlit 1.67.0, OpenAI SDK 3.46.0
+and Pillow 13.0.0).
 
----
+~~~powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install -r requirements.txt
+python build_offline.py
+python -m streamlit run app.py
+~~~
 
-## Key Features
+The route planner and manual headcount calculator work without an API key.
+The optional cloud features use DASHSCOPE_API_KEY and DASHSCOPE_BASE_URL
+from environment variables or .streamlit/secrets.toml. The default endpoint
+and qwen3.8-flash model are retained from the original course project.
+A working instructor-issued key is still required for actual cloud inference.
+Never commit secrets.
 
-1. Dynamic Transit and Congestion Planner (Tab 1)
-- Location-Aware Routing: Select your current campus landmark (e.g., Main Building, Chong Yuet Ming, Centennial Campus).
-- Transit Cost Optimization: Computes empirical transit time combined with peak-hour baseline service delays.
-- AI Dining Agent: Leverages the course-sponsored Alibaba Cloud Bailian (qwen3.8-flash) to generate real-time campus transit advice and dining recommendations.
+## Behavior
 
-2. Multi-Tier Queue Estimator (Tab 2)
-- Photo Queue Analysis: Evaluates crowd density and predicts queue numbers directly from stall photographs.
-- Turnaround Speed Matrices: Converts headcounts into predicted wait times using stall-specific metrics (e.g., 1.2 min/person for bistro setups, 0.6 min/person for high-throughput counters).
-- Deterministic Fallback Benchmarks: Provides pre-calibrated baseline caching for zero-GPU, offline, or high-concurrency evaluation scenarios.
+- Select a Hong Kong dining time to apply continuous lunch and dinner demand
+  curves. The Top 3 ranking combines walking time with assumed queue wait.
+  Rush mode ranks using 1.5 × walk + wait; displayed totals remain walk + wait.
+- Manual count uses count × service rate, without multiplying an observed queue
+  by the time-of-day curve again.
+- Photo mode requires an upload and explicit consent before sending a resized
+  JPEG to Alibaba Cloud. The app writes no photo files; provider retention may
+  differ. Empty, damaged, unsupported, oversized and irrelevant inputs have
+  controlled outcomes. Cloud failure never generates a fake observed count.
+- Synthetic demo uses 16 example people, clearly separated from real inference.
+- No CCTV, opening-hours integration, local Ollama model or custom model
+  training is implemented.
 
-3. Privacy and Edge-First Safeguards
-- Ephemeral In-Memory Processing: Uploaded images are compressed, analyzed in volatile memory, and discarded immediately without logging facial biometric data.
+## Real photo benchmark
 
----
+benchmarks/manifest.csv contains 25 planned sample rows across both campuses
+and all 8 canteens. Real photos and labels are absent. Follow benchmarks/README.md
+to collect distinct photos and enter manual and frozen model counts.
 
-## Architecture and Fallback Pipeline
+~~~powershell
+python benchmark.py benchmarks/manifest.csv --report benchmarks/report.json
+~~~
 
-The project features a multi-tier fallback mechanism to guarantee uninterrupted service during grading and demonstrations:
+Exit 0 means a complete corpus meets aggregate WAPE strictly below 10%;
+1 means the accuracy target was missed; 2 means evidence is incomplete.
+WAPE is sum of absolute errors divided by total manual headcount.
+MAE, positive-count MAPE, per-photo errors and campus/canteen groups are also
+reported. An all-empty corpus cannot pass the accuracy gate.
 
-- Primary Engine: Alibaba Cloud Bailian (qwen3.8-flash via Token Plan)
-- Secondary Engine: Local Ollama (LLaVA for zero-shot local vision)
-- Tertiary Fallback: Deterministic Empirical Heuristics and Offline Benchmark Cache
+## Offline use
 
----
+Save offline/offline.html or download it from the Streamlit app before losing
+the connection. The saved file runs routes and manual counts without a server.
+The Streamlit page itself needs its Python server connection.
 
-## Quick Start Guide (Local Execution)
+For the PWA, serve offline/ over HTTPS or localhost and wait for "Offline ready".
+See offline/README.md. No external CDN or cloud API is needed. Rebuild after
+changing calibration.py or routing.py.
 
-If you wish to clone and run the application locally:
+## Verify
 
-1. Clone the Repository
-git clone https://github.com/buwanmihayou/hku-canteen-queue-agent.git
-cd hku-canteen-queue-agent
+~~~powershell
+python -m unittest discover -v
+~~~
 
-2. Install Dependencies
-pip install -r requirements.txt
+51 tests passed. If Node.js is absent, the JavaScript/Python parity test is
+skipped; install Node.js to run it. Tests use synthetic inputs and mocked cloud
+responses, not real headcount accuracy measurements. Chrome headless checks
+covered widths 320, 375, 390, 768 and 1280 and offline reload. Physical mobile
+Safari and Chrome remain unverified.
 
-(Core dependencies: streamlit, openai, pillow)
-
-3. Environment Configuration (Optional)
-If calling the sponsored cloud models locally, create a file named .streamlit/secrets.toml:
-DASHSCOPE_API_KEY = "your-sponsored-api-key"
-DASHSCOPE_BASE_URL = "https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1"
-
-(If no keys are provided, the system seamlessly operates via the local/offline rule-based pipeline).
-
-4. Launch the Web Application
-streamlit run app.py
-
-Open your browser at http://localhost:8501.
-
----
-
-## Evaluation and Reviewer Instructions (Mid-Term Check)
-
-Teaching assistants and peer reviewers can verify reproducibility through either method:
-
-Option A: 1-Click Evaluation via Deployed Cloud App (Recommended)
-1. Open the public web portal: https://hku-canteen-agent.streamlit.app
-2. Tab 1 (Transit & Peak Planner): Choose your starting point and click "Find Optimal Dining Route" to verify the path-ranking algorithm and Bailian AI recommendations.
-3. Tab 2 (Live Queue Estimator): Upload any test canteen picture (PNG/JPG), check "Use benchmark verification cache (Offline test mode)" (or leave unchecked for dynamic inference), and click "Estimate Queue Delays" to inspect the real-time headcount metrics and queue delay estimation.
-
-Option B: Offline Fallback Verification (Zero External APIs)
-1. In Tab 2, check "Use benchmark verification cache (Offline test mode)".
-2. Run estimation on any image to confirm deterministic, fully reproducible results without network dependencies.
-
----
-
-## Project Structure
-
-- app.py: Main application, Bailian LLM orchestration, and UI layout
-- requirements.txt: Python runtime dependencies
-- README.md: Documentation, architecture guide, and evaluation instructions
-
----
-
-## License and Course Attribution
-
-Developed for AILT9019: Generative AI and Code Agents (Group 37) at The University of Hong Kong (HKU). Provided strictly for academic evaluation and research purposes.
+CALIBRATION_NOTES.md describes the curve assumptions. TEST_RESULTS.md records
+the verified scope. Real photo collection and physical phone validation remain pending.

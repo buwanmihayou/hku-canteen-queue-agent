@@ -1,0 +1,71 @@
+/* Responsive layout for phone-sized viewports.
+   Loaded from app.py with st.html(Path(__file__).with_name("mobile.css")).
+   Only layout and spacing live here; colors and typography stay in the
+   Streamlit theme so the sheet survives Streamlit upgrades. */
+
+@media (max-width: 640px) {
+  /* Reclaim horizontal space from the default page gutters. */
+  .block-container {
+    padding-left: 0.75rem !important;
+    padding-right: 0.75rem !important;
+    padding-top: 4.5rem !important;
+  }
+
+  /* Keep both tab labels on short, non-clipped lines; Streamlit already lets
+     an overflowing tab bar scroll horizontally. */
+  [data-testid="stTabs"] [role="tab"] {
+    padding-left: 0.6rem;
+    padding-right: 0.6rem;
+    font-size: 0.85rem;
+    white-space: nowrap;
+  }
+
+  /* Long urgency options wrap onto separate lines instead of being squeezed. */
+  [data-testid="stRadioGroup"] {
+    flex-wrap: wrap !important;
+    row-gap: 0.5rem !important;
+  }
+
+  [data-testid="stRadioOption"] {
+    min-height: 2.25rem;
+  }
+
+  /* Long canteen names must never trigger horizontal page scrolling. */
+  [data-testid="stMarkdownContainer"],
+  [data-testid="stAlert"] {
+    overflow-wrap: anywhere;
+  }
+
+  /* Cap photo height so the result metrics stay close to the fold on phones. */
+  [data-testid="stImage"] img {
+    max-height: 18rem;
+    object-fit: contain;
+  }
+
+  /* Prevent min-content overflow inside any column. */
+  [data-testid="stColumn"] {
+    min-width: 0;
+  }
+
+  /* Give each result metric its own full-width row on phones. Streamlit's
+     native column wrap still keeps a 50% flex basis, so override it here. */
+  .st-key-tab2_metrics [data-testid="stColumn"] {
+    flex: 1 1 100% !important;
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  [data-testid="stSelectbox"],
+  [data-testid="stFileUploader"],
+  [data-testid="stCheckbox"] {
+    max-width: 100%;
+  }
+}
+
+/* Comfortable touch targets on any touch device, not just narrow screens. */
+@media (pointer: coarse) {
+  .st-key-tab1_btn button,
+  .st-key-tab2_btn button {
+    min-height: 2.75rem;
+  }
+}
